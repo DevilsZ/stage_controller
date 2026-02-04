@@ -20,7 +20,7 @@ class SerialController:
         try:
             self.ser = serial.Serial(
                 port=port,
-                baudrate=38400,
+                baudrate=9600,#38400,
                 bytesize=serial.EIGHTBITS,
                 parity=serial.PARITY_NONE,
                 stopbits=serial.STOPBITS_ONE,
@@ -97,7 +97,7 @@ class StageController:
         self.txtFast.place(x=290, y=200)
         self.txtRate.place(x=380, y=200)
 
-        self.txt_usb.insert(0, "/dev/ttyUSB0")
+        self.txt_usb.insert(0, "/dev/ttyUSB1")
         self.txt_rel.insert(0, "100")
         self.txt_abs.insert(0, "0")
         self.txtSlow.insert(0, "2000")
@@ -109,6 +109,14 @@ class StageController:
             value = 0 if label == "All" else i + 1
             tk.Radiobutton(self.root, text=label, variable=self.axis, value=value).place(x=100 + 60*i, y=50)
 
+        self.step_or_mm_rel = tk.IntVar(value=1)
+        tk.Radiobutton(self.root, text='steps', variable=self.step_or_mm_rel, value=1).place(x=280, y=120)
+        tk.Radiobutton(self.root, text='mm',    variable=self.step_or_mm_rel, value=2).place(x=360, y=120)
+
+        self.step_or_mm_abs = tk.IntVar(value=1)
+        tk.Radiobutton(self.root, text='steps', variable=self.step_or_mm_abs, value=1).place(x=280, y=160)
+        tk.Radiobutton(self.root, text='mm',    variable=self.step_or_mm_abs, value=2).place(x=360, y=160)
+            
         self.direction = tk.IntVar(value=1)
         tk.Radiobutton(self.root, text='+', variable=self.direction, value=1).place(x=200, y=240)
         tk.Radiobutton(self.root, text='-', variable=self.direction, value=2).place(x=240, y=240)
@@ -123,29 +131,58 @@ class StageController:
         except ValueError:
             return None
 
+    def safe_float(self, text):
+        try:
+            return float(text)
+        except ValueError:
+            return None
+
     # ---------- Button Handlers ----------
     def click_connect(self):
-        if self.serial.open('COM3'):   # Linux: /dev/ttyUSB0 等
+        if self.serial.open(self.txt_usb.get()):   # Linux: /dev/ttyUSB0, Windows COM3
             print("Serial connected")
+        self.click_status()
 
     def click_origin(self):
         cmd = f'H:{self.get_axis()}\r\n'
+        print('cmd:',cmd)
         print(self.serial.send(cmd))
+        self.click_status()
 
     def click_move_rel(self):
-        value = self.safe_int(self.txt_rel.get())
+        if self.step_or_mm_rel.get() == 1: # steps
+            value = self.safe_int(self.txt_rel.get())
+        elif self.step_or_mm_rel.get() == 2: # mm
+            # get value
+            value = self.safe_float(self.txt_rel.get())
+            value = int(500*value)
+        else:
+            print('Invalid unit:',self.set_or_mm_rel.get())
+            return
+        
         if value is None:
             return
         direction = '+' if value >= 0 else '-'
         cmd = f'M:{self.get_axis()}{direction}P{abs(value)}\r\n'
+        print('cmd',cmd)
         print(self.serial.send(cmd))
         self.root.after(500, lambda: print(self.serial.send('G:\r\n')))
 
     def click_move_abs(self):
-        value = self.safe_int(self.txt_abs.get())
+        if self.step_or_mm_abs.get() == 1: # steps
+            value = self.safe_int(self.txt_abs.get())
+        elif self.step_or_mm_abs.get() == 2: # mm
+            # get value
+            value = self.safe_float(self.txt_abs.get())
+            value = int(500*value)
+        else:
+            print('Invalid unit:',self.set_or_mm_abs.get())
+            return
         if value is None:
             return
+        
         cmd = f'A:{self.get_axis()}P{value}\r\n'
+        print('cmd',cmd)
         print(self.serial.send(cmd))
         self.root.after(500, lambda: print(self.serial.send('G:\r\n')))
 
